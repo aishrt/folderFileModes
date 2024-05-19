@@ -1,0 +1,283 @@
+const mongoose = require("mongoose");
+
+const folderSchema = mongoose.Schema(
+  {
+    folderName: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    assignee: {
+      appliedTo: {
+        type: String,
+        required: true,
+      },
+      selectedUsers: [
+        {
+          type: mongoose.SchemaTypes.ObjectId,
+          ref: "User",
+        },
+      ],
+      selectedRoles: [
+        {
+          type: String,
+        },
+      ],
+    },
+    sharedBy: {
+      type: mongoose.SchemaTypes.ObjectId,
+      ref: "User",
+      required: true,
+    },
+  },
+  {
+    timestamps: true,
+  }
+);
+
+module.exports = Folder;
+
+// folderSchema.pre("save", function (next) {
+//   if (this.isNew || this.isModified("folderName")) {
+//     this.folderName =
+//       this.folderName.charAt(0).toUpperCase() + this.folderName.slice(1);
+//   }
+//   next();
+// });
+
+// Pre-save hook to capitalize the folderName
+folderSchema.pre("save", async function (next) {
+  if (this.isNew || this.isModified("folderName")) {
+    this.folderName =
+      this.folderName.charAt(0).toUpperCase() + this.folderName.slice(1);
+
+    // Check if the folderName already exists
+    const existingFolder = await mongoose.models.Folder.findOne({
+      folderName: this.folderName,
+    });
+    if (existingFolder) {
+      const error = new Error("Folder name already exists");
+      next(error);
+    } else {
+      next();
+    }
+  } else {
+    next();
+  }
+});
+
+const Folder = mongoose.model("Folder", folderSchema);
+
+module.exports = Folder;
+
+
+======================================
+
+
+const mongoose = require("mongoose");
+
+const fileSchema = mongoose.Schema(
+  {
+    fileName: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    sharedBy: {
+      type: mongoose.SchemaTypes.ObjectId,
+      ref: "User",
+      required: true,
+    },
+    sharedBy: {
+      type: mongoose.SchemaTypes.ObjectId,
+      ref: "Folder",
+      required: true,
+    },
+  },
+  {
+    timestamps: true,
+  }
+);
+
+module.exports = Folder;
+
+fileSchema.pre("save", function (next) {
+  if (this.isNew || this.isModified("fileName")) {
+    this.fileName =
+      this.fileName.charAt(0).toUpperCase() + this.fileName.slice(1);
+  }
+  next();
+});
+
+const Folder = mongoose.model("Folder", fileSchema);
+
+module.exports = Folder;
+
+
+
+===============================================================================
+
+
+const catchAsync = require("../utils/catchAsync");
+const { Folder } = require("../models");
+
+// --------------- Create Folder Detail ------------------
+const createFolder = catchAsync(async (req, res) => {
+  try {
+    const identity = req.user;
+    const folder = await Folder.create({ ...req.body, userId: identity });
+    return res.status(200).json({
+      status: "200",
+      message: "Folder created successfully!",
+      data: folder,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      status: "500",
+      message: "An error occurred while fetcihng folder data !",
+      error: error.message,
+    });
+  }
+});
+
+// --------------- Get One Folder Data ------------------
+const getFolder = catchAsync(async (req, res) => {
+  try {
+    const folderId = req.params.id;
+    const folderDetail = await Folder.findById(folderId);
+    return res.status(200).json({
+      status: "200",
+      message: "Folder data fetched successfully!",
+      data: folderDetail,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      status: "500",
+      message: "An error occurred while fetcihng folder data !",
+      error: error.message,
+    });
+  }
+});
+
+// -------------------- Update FOlder  ------------------
+const updateFolder = catchAsync(async (req, res) => {
+  try {
+    const folderId = req.params.id;
+    const folderDetail = await Folder.findOneAndUpdate(
+      { _id: folderId },
+      req.body,
+      {
+        new: true,
+      }
+    );
+    return res.status(200).json({
+      status: "200",
+      message: "Folder data updated successfully!",
+      data: folderDetail,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      status: "500",
+      message: "An error occurred while updating folder data !",
+      error: error.message,
+    });
+  }
+});
+
+// ------------------------ Delete selected Folder ------------------
+const deleteFolder = catchAsync(async (req, res) => {
+  try {
+    const folderId = req.params.id;
+    await Folder.findOneAndDelete({ _id: folderId });
+    return res.status(200).json({
+      status: "200",
+      message: "Folder deleted successfully!",
+    });
+  } catch (error) {
+    return res.status(500).json({
+      status: "500",
+      message: "An error occurred while deleting folder data !",
+      error: error.message,
+    });
+  }
+});
+
+// --------------------- Get List of all folder's ------------------
+const getList = catchAsync(async (req, res) => {
+  const searchName = req.query.name;
+  const currentUser = req.user;
+  const perPage = 9; //  Number of documents to display on each page
+  const page = req.query.page ? parseInt(req.query.page, 10) : 1; // It specify the selected page number
+
+  let query = { userId: currentUser };
+
+  if (searchName) {
+    const searchValue = new RegExp(searchName, "i");
+    query.$or = [{ folderName: searchValue }];
+  } // You can search Folder through title or author
+
+  try {
+    const totalCount = await Folder.countDocuments(query);
+
+    const folderList = await Folder.find(query)
+      .sort({ createdAt: -1 })
+      .skip(perPage * (page - 1))
+      .limit(perPage);
+
+    return res.status(200).json({
+      status: "200",
+      message: "Folder list fetched successfully!",
+      data: folderList,
+      page,
+      totalPages: Math.ceil(totalCount / perPage),
+      count: folderList.length,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      status: "500",
+      message: "An error occurred while fetching folder list!",
+      error: error.message,
+    });
+  }
+});
+
+module.exports = {
+  createFolder,
+  getFolder,
+  updateFolder,
+  getList,
+  deleteFolder,
+};
+
+
+
+
+================ Curl ===============================
+
+
+curl --location 'http://localhost:4004/folder/add' \
+--header 'Content-Type: application/json' \
+--data '{
+           "folderName": "Project Documents",
+           "assignee": {
+             "appliedTo": "Department",
+             "selectedUsers": ["60d0fe4f5311236168a109ca", "60d0fe4f5311236168a109cb"], 
+             "selectedRoles": ["Manager", "Editor"]
+           },
+           "sharedBy": "60d0fe4f5311236168a109cc"
+         }'
+
+
+
+
+
+
+       const data  =   {
+           "folderName": "Project Documents",
+           "assignee": {
+             "appliedTo": "Department",
+             "selectedUsers": ["60d0fe4f5311236168a109ca", "60d0fe4f5311236168a109cb"], 
+             "selectedRoles": ["Manager", "Editor"]
+           },
+           "sharedBy": "60d0fe4f5311236168a109cc"
+         }
